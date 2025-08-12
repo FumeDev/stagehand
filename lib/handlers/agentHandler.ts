@@ -607,22 +607,49 @@ export class StagehandAgentHandler {
         }
 
         case "drag": {
-          const { path } = action;
-          if (Array.isArray(path) && path.length >= 2) {
-            const start = path[0];
+          const dragPath = action.path as PathPoint[] | undefined;
+          if (Array.isArray(dragPath) && dragPath.length >= 2) {
+            const start = dragPath[0];
+            //const end = dragPath[dragPath.length - 1];
 
-            // Update cursor position for start
+            // // Try selector-based drag-and-drop first (fires HTML5 drag events)
+            // try {
+            //   const sourceSelector = await this.generateSelector(start.x, start.y);
+            //   const targetSelector = await this.generateSelector(end.x, end.y);
+
+            //   const toPlaywrightSelector = (sel: string | null): string | null => {
+            //     if (!sel) return null;
+            //     return sel.startsWith("//") ? `xpath=${sel}` : sel;
+            //   };
+
+            //   const pwSource = toPlaywrightSelector(sourceSelector);
+            //   const pwTarget = toPlaywrightSelector(targetSelector);
+
+            //   if (pwSource && pwTarget) {
+            //     await this.stagehandPage.page.dragAndDrop(pwSource, pwTarget, {
+            //       force: true,
+            //     });
+            //     result = { success: true };
+            //     break;
+            //   }
+            // } catch {
+            //   // Fallback to mouse path dragging
+            // }
+
+            // // Fallback: simulate drag via mouse moves with small steps and delays
             await this.updateCursorPosition(start.x, start.y);
             await this.stagehandPage.page.mouse.move(start.x, start.y);
-            await this.stagehandPage.page.mouse.down();
+            await this.stagehandPage.page.mouse.down({ button: "left" });
 
-            // Update cursor position for each point in the path
-            for (let i = 1; i < path.length; i++) {
-              await this.updateCursorPosition(path[i].x, path[i].y);
-              await this.stagehandPage.page.mouse.move(path[i].x, path[i].y);
+            for (let i = 1; i < dragPath.length; i++) {
+              const point = dragPath[i];
+              await this.updateCursorPosition(point.x, point.y);
+              await this.stagehandPage.page.mouse.move(point.x, point.y, { steps: 5 });
+              // Small delay to ensure intermediate events fire (dragover, etc.)
+              await new Promise((resolve) => setTimeout(resolve, 16));
             }
 
-            await this.stagehandPage.page.mouse.up();
+            await this.stagehandPage.page.mouse.up({ button: "left" });
           }
           result = { success: true };
           break;
@@ -1946,34 +1973,51 @@ export class StagehandAgentHandler {
         }
 
         case "drag": {
-          const { path } = action;
-          if (Array.isArray(path) && path.length >= 2) {
-            const startPoint = path[0] as PathPoint;
-            const endPoint = path[path.length - 1] as PathPoint;
+          const dragPath = action.path as PathPoint[] | undefined;
+          if (Array.isArray(dragPath) && dragPath.length >= 2) {
+            const start = dragPath[0];
+            const end = dragPath[dragPath.length - 1];
 
-            // Get selector for the drag source element
-            const sourceSelector = await this.generateSelector(
-              startPoint.x,
-              startPoint.y,
-            );
+            // Try selector-based drag-and-drop first (fires HTML5 drag events)
+            try {
+              const sourceSelector = await this.generateSelector(start.x, start.y);
+              const targetSelector = await this.generateSelector(end.x, end.y);
 
-            // Get selector for the drop target element
-            const targetSelector = await this.generateSelector(
-              endPoint.x,
-              endPoint.y,
-            );
+              const toPlaywrightSelector = (sel: string | null): string | null => {
+                if (!sel) return null;
+                return sel.startsWith("//") ? `xpath=${sel}` : sel;
+              };
 
-            recordedAction = {
-              ...recordedAction,
-              selector: sourceSelector, // Element being dragged
-              details: {
-                start: { x: startPoint.x, y: startPoint.y },
-                end: { x: endPoint.x, y: endPoint.y },
-                path: path as PathPoint[],
-                targetSelector, // Adding the drop target selector
-              },
-            };
+              const pwSource = toPlaywrightSelector(sourceSelector);
+              const pwTarget = toPlaywrightSelector(targetSelector);
+
+              if (pwSource && pwTarget) {
+                await this.stagehandPage.page.dragAndDrop(pwSource, pwTarget, {
+                  force: true,
+                });
+                result = { success: true };
+                break;
+              }
+            } catch {
+              // Fallback to mouse path dragging
+            }
+
+            // Fallback: simulate drag via mouse moves with small steps and delays
+            await this.updateCursorPosition(start.x, start.y);
+            await this.stagehandPage.page.mouse.move(start.x, start.y);
+            await this.stagehandPage.page.mouse.down({ button: "left" });
+
+            for (let i = 1; i < dragPath.length; i++) {
+              const point = dragPath[i];
+              await this.updateCursorPosition(point.x, point.y);
+              await this.stagehandPage.page.mouse.move(point.x, point.y, { steps: 5 });
+              // Small delay to ensure intermediate events fire (dragover, etc.)
+              await new Promise((resolve) => setTimeout(resolve, 16));
+            }
+
+            await this.stagehandPage.page.mouse.up({ button: "left" });
           }
+          result = { success: true };
           break;
         }
 
